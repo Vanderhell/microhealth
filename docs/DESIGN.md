@@ -1,23 +1,26 @@
-# Design Rationale
+# Design Notes
 
-## 1. Callback-based collectors — no hard dependencies
-microhealth collects metrics via user-provided callbacks. It never includes MCU-Malloc-Tracker, nvlog, or any other library. You wire the dependencies you have, skip what you don't. Testable in isolation with mock collectors.
+## Stable ABI
 
-## 2. Edge-triggered alerts — not level-triggered
-Alerts fire only when severity CHANGES (OK→WARN, WARN→CRITICAL, etc.), not on every tick. Prevents log spam and notification fatigue.
+The public API no longer relies on layout-changing macros. Metric capacity and history capacity are runtime configuration values stored in the instance, and all public capacities and indexes use `size_t`.
 
-## 3. Dual threshold (WARN + CRITICAL)
-Two levels give you time to react. WARN = "pay attention." CRITICAL = "act now." Maps naturally to log levels and monitoring systems.
+## Two-Phase Checks
 
-## 4. Directional comparison
-Heap and battery alert BELOW threshold. Temperature and errors alert ABOVE. Per-metric, not global.
+Each check is split into:
 
-## 5. Rate-limited tick
-check_interval_ms prevents wasting CPU. check_now() bypasses for on-demand inspection.
+1. Phase A: sample the clock once, collect every enabled metric, and compute pending sample states and transitions.
+2. Phase B: commit latest state, optional history, and counters, then deliver alerts in registration order.
 
-| Decision | Gains | Costs |
-|----------|-------|-------|
-| Callback collectors | Zero hard deps, testable | User writes wiring |
-| Edge-triggered | No spam | Misses sub-tick oscillations |
-| Dual threshold | Gradual escalation | Two values per metric |
-| Rate limiting | CPU savings | Delayed detection |
+This ensures callback queries observe a complete snapshot.
+
+## Failure Semantics
+
+Collector failures are explicit states, not values. A failed collection preserves the last valid value internally but marks the current sample as `MHEALTH_SAMPLE_COLLECTION_FAILED`.
+
+## Reentrancy Guard
+
+The busy guard blocks same-instance mutation during checks and callbacks. It is not a mutex and does not make the library thread-safe.
+
+## Volatile History
+
+History is caller-provided RAM. It survives only until reinitialization, reset, or power loss.

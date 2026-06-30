@@ -1,15 +1,20 @@
-CC      ?= gcc
-CFLAGS  := -std=c99 -Wall -Wextra -Wpedantic -Werror -I../include
-SRC     := ../src/mhealth.c
-TESTS   := test_all.c
+CC ?= cc
+CPPFLAGS ?=
+CFLAGS ?= -std=c99 -Wall -Wextra -Wpedantic -Werror
+LDFLAGS ?=
+LDLIBS ?=
+
+SRC = ../src/mhealth.c
+TEST_SRC = test_all.c
+OUT = test_all
 
 .PHONY: all clean
 
-all: test_all
-	@./test_all
+all: $(OUT)
+	./$(OUT)
 
-test_all: $(TESTS) $(SRC) ../include/mhealth.h
-	$(CC) $(CFLAGS) $(SRC) $(TESTS) -o $@
+$(OUT): $(SRC) $(TEST_SRC) ../include/mhealth.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I../include $(SRC) $(TEST_SRC) $(LDFLAGS) $(LDLIBS) -o $(OUT)
 
 clean:
-	rm -f test_all
+	rm -f $(OUT) $(OUT).exe

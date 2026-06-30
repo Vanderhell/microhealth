@@ -1,119 +1,153 @@
 # microhealth
 
 [![CI](https://github.com/Vanderhell/microhealth/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Vanderhell/microhealth/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![C99](https://img.shields.io/badge/language-C99-blue.svg)](https://en.wikipedia.org/wiki/C99)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
-Runtime system health monitor for embedded systems.
+`microhealth` is a small C health-check library for embedded and low-level systems. It uses caller-owned storage, synchronous collectors, explicit sample states, and deterministic threshold evaluation.
 
-`C99` | `Zero dependencies` | `Zero allocations` | `Callback-driven` | `Portable`
+## Status
 
-## Why microhealth?
+- C99 library target with C11 test coverage.
+- C++ header inclusion and C-built library consumption covered.
+- Zero third-party runtime dependencies.
+- Snapshot formatting uses the C library `snprintf`.
+- No heap allocation inside the library.
+- No tag-backed `1.0.0` release exists in this repository history. Current repairs are tracked as `Unreleased`.
 
-Your firmware can already have heap tracking, persistent logs, crash dumps, and MQTT queueing.
-`microhealth` adds a small runtime monitor that continuously:
+## Core Contracts
 
-- collects metrics from your existing subsystems,
-- compares values against WARN/CRITICAL thresholds,
-- triggers alerts only on severity transitions.
-
-That gives early warning before a device reaches failure state.
-
-## Features
-
-- Callback-based metric collection (`mhealth_collect_fn`)
-- Directional thresholding (`MHEALTH_ABOVE` / `MHEALTH_BELOW`)
-- Dual severity levels (WARN + CRITICAL)
-- Edge-triggered alerts (no repeated spam on same severity)
-- Configurable check interval + forced immediate check
-- Snapshot history ring buffer
-- Human-readable snapshot formatting for shell/log output
-
-## Project Structure
-
-- `include/mhealth.h` - public API
-- `src/mhealth.c` - implementation
-- `tests/test_all.c` - unit and scenario tests
-- `docs/API_REFERENCE.md` - API overview
-- `docs/DESIGN.md` - design rationale
-- `docs/PORTING_GUIDE.md` - porting notes
+- Public structure layout does not change with consumer macros.
+- `mhealth_init` takes caller-owned metric storage and optional caller-owned history storage.
+- Metric names are borrowed. They must remain valid and immutable until reinitialization.
+- Collectors return `MHEALTH_COLLECT_OK`, `MHEALTH_COLLECT_UNAVAILABLE`, or `MHEALTH_COLLECT_ERROR`.
+- Collection failures are not numeric values and do not synthesize `WARN` or `CRITICAL`.
+- ABOVE thresholds are inclusive: `warn <= value < critical`, `critical <= value`.
+- BELOW thresholds are inclusive: `warn >= value > critical`, `critical >= value`.
+- Equal warn/critical thresholds are rejected.
+- `mhealth_tick` samples the clock once per attempted tick.
+- Rate-limited skips report success with `performed == false` and do not collect, update history, or fire alerts.
+- Alert callbacks run only after the full latest snapshot, history entry, and counters are committed.
+- Same-instance mutating reentry from collectors and alert callbacks returns `MHEALTH_ERR_BUSY`.
+- Query APIs remain callable during callbacks.
+- Disabled, unsampled, valid, and collection-failed samples are distinct states.
+- History is volatile RAM only. It is lost on reinitialization, reset, or power loss.
+- One `mhealth_t` is not thread-safe. The caller must serialize same-instance access.
+- ISR use is unsupported unless the platform guarantees no concurrent access and ISR-safe callbacks/collectors.
 
 ## Quick Start
 
 ```c
 #include "mhealth.h"
+#include <string.h>
 
-static int32_t collect_heap(void *ctx) { return (int32_t)mmt_get_free_bytes(ctx); }
-static int32_t collect_temp(void *ctx) { (void)ctx; return (int32_t)(adc_read_temp() * 10); }
+typedef struct {
+    uint32_t now_ms;
+    int32_t heap_free;
+} app_state_t;
 
-static void on_alert(const mhealth_alert_t *a, void *ctx) {
-    (void)ctx;
-    MLOG_WARN("HEALTH", "%s: %ld -> %s", a->name, (long)a->value,
-              mhealth_severity_str(a->severity));
+static uint32_t app_clock(void *ctx)
+{
+    app_state_t *state = (app_state_t *)ctx;
+    return state->now_ms;
 }
 
-mhealth_t hm;
-mhealth_init(&hm, HAL_GetTick, 5000);
-mhealth_set_alert(&hm, on_alert, NULL);
+static mhealth_collect_result_t collect_heap(void *ctx, int32_t *out_value)
+{
+    app_state_t *state = (app_state_t *)ctx;
+    *out_value = state->heap_free;
+    return MHEALTH_COLLECT_OK;
+}
 
-mhealth_register(&hm, "heap_free", MHEALTH_METRIC_HEAP_FREE,
-                 collect_heap, &tracker, MHEALTH_BELOW, 4000, 1000);
-mhealth_register(&hm, "mcu_temp", MHEALTH_METRIC_MCU_TEMP,
-                 collect_temp, NULL, MHEALTH_ABOVE, 700, 850);
+static void on_alert(const mhealth_alert_t *alert, void *ctx)
+{
+    (void)alert;
+    (void)ctx;
+}
 
-while (1) {
-    mhealth_tick(&hm);
+int main(void)
+{
+    app_state_t app = { 1000U, 6000 };
+    mhealth_t hm;
+    mhealth_metric_slot_t metric_slots[1];
+    mhealth_history_meta_t history_meta[2];
+    mhealth_sample_t history_samples[2];
+    mhealth_config_t config;
+    mhealth_metric_config_t metric;
+    mhealth_check_result_t result;
+    size_t heap_index = 0U;
+
+    memset(&config, 0, sizeof(config));
+    memset(&metric, 0, sizeof(metric));
+    config.metric_slots = metric_slots;
+    config.metric_capacity = 1U;
+    config.history_meta = history_meta;
+    config.history_samples = history_samples;
+    config.history_capacity = 2U;
+    config.clock_fn = app_clock;
+    config.clock_ctx = &app;
+    config.alert_fn = on_alert;
+    config.alert_ctx = &app;
+    config.check_interval_ms = 100U;
+
+    if (mhealth_init(&hm, &config) != MHEALTH_OK) {
+        return 1;
+    }
+
+    metric.name = "heap_free";
+    metric.metric_id = MHEALTH_METRIC_HEAP_FREE;
+    metric.collect_fn = collect_heap;
+    metric.collect_ctx = &app;
+    metric.direction = MHEALTH_BELOW;
+    metric.warn_threshold = 4000;
+    metric.critical_threshold = 1000;
+    if (mhealth_register(&hm, &metric, &heap_index) != MHEALTH_OK) {
+        return 2;
+    }
+
+    if (mhealth_tick(&hm, &result) != MHEALTH_OK) {
+        return 3;
+    }
+
+    return (heap_index == 0U && result.performed) ? 0 : 4;
 }
 ```
 
-## Build and Test
+The compiled copy of this example lives in `tests/readme_example.c`.
 
-Linux/macOS (or CI-compatible shell):
+## Build And Test
+
+### CMake
+
+```sh
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+### Makefile
 
 ```sh
 make -C tests clean
 make -C tests
 ```
 
-Manual compile:
+## Package Consumption
+
+Install and consume with `find_package`:
 
 ```sh
-gcc -std=c99 -Wall -Wextra -Wpedantic -Werror -Iinclude src/mhealth.c tests/test_all.c -o tests/test_all
-./tests/test_all
+cmake --install build --prefix install
+cmake -S tests/install_consumer -B build/install-consumer -DCMAKE_PREFIX_PATH=$PWD/install
+cmake --build build/install-consumer
 ```
-
-## CI
-
-GitHub Actions workflow is in `.github/workflows/ci.yml`.
-It builds and runs tests on branch `master` for both `gcc` and `clang`.
-
-## Release Readiness Checklist
-
-- README with usage, build/test, docs links, and badges
-- MIT license (copyright owner: Vanderhell)
-- Contributing guide
-- Changelog
-- CI workflow
-- Tests included
-
-## Ecosystem Integrations
-
-- [MCU-Malloc-Tracker](https://github.com/Vanderhell/MCU-Malloc-Tracker)
-- [nvlog](https://github.com/Vanderhell/nvlog)
-- [iotspool](https://github.com/Vanderhell/iotspool)
-- [microlog](https://github.com/Vanderhell/microlog)
-- [microsh](https://github.com/Vanderhell/microsh)
-- [microcbor](https://github.com/Vanderhell/microcbor)
-- [panicdump](https://github.com/Vanderhell/panicdump)
 
 ## Documentation
 
 - [API Reference](docs/API_REFERENCE.md)
-- [Design Rationale](docs/DESIGN.md)
+- [Design Notes](docs/DESIGN.md)
 - [Porting Guide](docs/PORTING_GUIDE.md)
-- [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)
 
 ## License
 
-MIT - see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE)

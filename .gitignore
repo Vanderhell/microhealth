@@ -41,3 +41,4 @@ tests/test_all.exe
 *.tar
 *.zip
 git.txt
+/prompts
