@@ -87,7 +87,7 @@ static mhealth_err_t require_ready(const mhealth_t *hm)
     return MHEALTH_OK;
 }
 
-static mhealth_err_t require_mutable(mhealth_t *hm)
+static mhealth_err_t require_mutable(const mhealth_t *hm)
 {
     mhealth_err_t status = require_ready(hm);
     if (status != MHEALTH_OK) {

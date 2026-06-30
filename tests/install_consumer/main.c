@@ -9,13 +9,13 @@ typedef struct {
 
 static uint32_t consumer_clock(void *ctx)
 {
-    app_state_t *state = (app_state_t *)ctx;
+    const app_state_t *state = (const app_state_t *)ctx;
     return state->now_ms;
 }
 
 static mhealth_collect_result_t consumer_collect(void *ctx, int32_t *out_value)
 {
-    app_state_t *state = (app_state_t *)ctx;
+    const app_state_t *state = (const app_state_t *)ctx;
     *out_value = state->heap_free;
     return MHEALTH_COLLECT_OK;
 }

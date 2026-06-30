@@ -78,38 +78,43 @@ jobs:
 
   windows-msvc:
     runs-on: windows-latest
-    defaults:
-      run:
-        shell: cmd
     steps:
       - uses: actions/checkout@v4
-      - name: Set up MSVC
-        run: call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
       - name: Configure
-        run: call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" && cmake -S . -B build -G "NMake Makefiles"
+        shell: cmd
+        run: cmake -S . -B build -G "NMake Makefiles"
       - name: Build
-        run: call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" && cmake --build build
+        shell: cmd
+        run: cmake --build build
       - name: Test
-        run: call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" && ctest --test-dir build --output-on-failure
+        shell: cmd
+        run: ctest --test-dir build --output-on-failure
       - name: Install and consume
+        shell: cmd
         run: |
-          call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" && cmake --install build --prefix install
-          call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" && cmake -S tests/install_consumer -B build/install-consumer -G "NMake Makefiles" -DCMAKE_PREFIX_PATH=%GITHUB_WORKSPACE%\install
-          call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" && cmake --build build/install-consumer
+          cmake --install build --prefix install
+          cmake -S tests/install_consumer -B build/install-consumer -G "NMake Makefiles" -DCMAKE_PREFIX_PATH=%GITHUB_WORKSPACE%\install
+          cmake --build build/install-consumer
 
   windows-clangcl:
     runs-on: windows-latest
-    defaults:
-      run:
-        shell: cmd
     steps:
       - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
       - name: Configure
-        run: call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" && cmake -S . -B build -G "NMake Makefiles" -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
+        shell: cmd
+        run: cmake -S . -B build -G "NMake Makefiles" -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
       - name: Build
-        run: call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" && cmake --build build
+        shell: cmd
+        run: cmake --build build
       - name: Test
-        run: call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" && ctest --test-dir build --output-on-failure
+        shell: cmd
+        run: ctest --test-dir build --output-on-failure
 
   arm-cross:
     runs-on: ubuntu-latest

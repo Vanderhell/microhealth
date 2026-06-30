@@ -182,6 +182,11 @@ static mhealth_collect_result_t fixed_collect(void *ctx, int32_t *out_value)
     return collector->result;
 }
 
+static void set_collector_value(collector_state_t *collector, int32_t value)
+{
+    collector->value = value;
+}
+
 static void log_alert(const mhealth_alert_t *alert, void *ctx)
 {
     fixture_t *fixture = (fixture_t *)ctx;
@@ -378,14 +383,14 @@ static int test_threshold_boundaries_and_limits(void)
     ASSERT_TRUE(register_fixed_metric(
         &fixture, "heap", MHEALTH_METRIC_HEAP_FREE, &below, MHEALTH_BELOW, -10, -20, &index));
 
-    above.value = 9;
-    below.value = -9;
+    set_collector_value(&above, 9);
+    set_collector_value(&below, -9);
     ASSERT_INT_EQ(MHEALTH_OK, mhealth_check_now(&fixture.hm, &(mhealth_check_result_t){ 0 }));
     ASSERT_INT_EQ(MHEALTH_OK, mhealth_get_metric_status(&fixture.hm, 0U, &status));
     ASSERT_INT_EQ(MHEALTH_SEVERITY_OK, status.current_sample.severity);
 
-    above.value = 10;
-    below.value = -10;
+    set_collector_value(&above, 10);
+    set_collector_value(&below, -10);
     fixture.clock.now += 100U;
     ASSERT_INT_EQ(MHEALTH_OK, mhealth_check_now(&fixture.hm, &(mhealth_check_result_t){ 0 }));
     ASSERT_INT_EQ(MHEALTH_OK, mhealth_get_metric_status(&fixture.hm, 0U, &status));
@@ -393,8 +398,8 @@ static int test_threshold_boundaries_and_limits(void)
     ASSERT_INT_EQ(MHEALTH_OK, mhealth_get_metric_status(&fixture.hm, 1U, &status));
     ASSERT_INT_EQ(MHEALTH_SEVERITY_WARN, status.current_sample.severity);
 
-    above.value = INT32_MAX;
-    below.value = INT32_MIN;
+    set_collector_value(&above, INT32_MAX);
+    set_collector_value(&below, INT32_MIN);
     fixture.clock.now += 100U;
     ASSERT_INT_EQ(MHEALTH_OK, mhealth_check_now(&fixture.hm, &(mhealth_check_result_t){ 0 }));
     ASSERT_INT_EQ(MHEALTH_OK, mhealth_get_metric_status(&fixture.hm, 0U, &status));
