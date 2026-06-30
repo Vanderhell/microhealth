@@ -7,7 +7,6 @@
 #include "mhealth.h"
 
 #include <limits.h>
-#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -759,25 +758,13 @@ static const char *sample_status_str(mhealth_sample_status_t status)
     }
 }
 
-static mhealth_err_t append_format(
+static mhealth_err_t append_text_result(
     char *buf,
     size_t buf_size,
     size_t *cursor,
     size_t *required,
-    const char *fmt,
-    ...)
+    int rc)
 {
-    int rc;
-    va_list args;
-
-    va_start(args, fmt);
-    rc = vsnprintf(
-        buf != NULL && *cursor < buf_size ? buf + *cursor : NULL,
-        buf != NULL && *cursor < buf_size ? buf_size - *cursor : 0U,
-        fmt,
-        args);
-    va_end(args);
-
     if (rc < 0) {
         if (buf != NULL && buf_size > 0U) {
             buf[(buf_size - 1U)] = '\0';
@@ -798,6 +785,45 @@ static mhealth_err_t append_format(
     }
 
     return MHEALTH_OK;
+}
+
+static mhealth_err_t append_header_line(
+    char *buf,
+    size_t buf_size,
+    size_t *cursor,
+    size_t *required,
+    uint32_t timestamp_ms,
+    size_t sample_count)
+{
+    int rc = snprintf(
+        buf != NULL && *cursor < buf_size ? buf + *cursor : NULL,
+        buf != NULL && *cursor < buf_size ? buf_size - *cursor : 0U,
+        "snapshot timestamp_ms=%lu sample_count=%lu\n",
+        (unsigned long)timestamp_ms,
+        (unsigned long)sample_count);
+    return append_text_result(buf, buf_size, cursor, required, rc);
+}
+
+static mhealth_err_t append_sample_line(
+    char *buf,
+    size_t buf_size,
+    size_t *cursor,
+    size_t *required,
+    size_t index,
+    const char *name,
+    const mhealth_sample_t *sample)
+{
+    int rc = snprintf(
+        buf != NULL && *cursor < buf_size ? buf + *cursor : NULL,
+        buf != NULL && *cursor < buf_size ? buf_size - *cursor : 0U,
+        "%lu %s id=%u value=%ld severity=%s status=%s\n",
+        (unsigned long)index,
+        name,
+        (unsigned)sample->metric_id,
+        (long)sample->value,
+        mhealth_severity_str(sample->severity),
+        sample_status_str(sample->status));
+    return append_text_result(buf, buf_size, cursor, required, rc);
 }
 
 mhealth_err_t mhealth_snapshot_format(
@@ -831,19 +857,14 @@ mhealth_err_t mhealth_snapshot_format(
         buf[0] = '\0';
     }
 
-    status = append_format(
-        buf, buf_size, &cursor, &required,
-        "snapshot timestamp_ms=%lu sample_count=%lu\n",
-        (unsigned long)meta->timestamp_ms,
-        (unsigned long)sample_count);
+    status = append_header_line(
+        buf, buf_size, &cursor, &required, meta->timestamp_ms, sample_count);
     if (status != MHEALTH_OK) {
         return status;
     }
 
     for (i = 0; i < sample_count; ++i) {
         const char *name = "<unknown>";
-        const char *severity = mhealth_severity_str(samples[i].severity);
-        const char *sample_state = sample_status_str(samples[i].status);
         size_t slot_index;
 
         for (slot_index = 0; slot_index < hm->metric_count; ++slot_index) {
@@ -853,15 +874,8 @@ mhealth_err_t mhealth_snapshot_format(
             }
         }
 
-        status = append_format(
-            buf, buf_size, &cursor, &required,
-            "%lu %s id=%u value=%ld severity=%s status=%s\n",
-            (unsigned long)i,
-            name,
-            (unsigned)samples[i].metric_id,
-            (long)samples[i].value,
-            severity,
-            sample_state);
+        status = append_sample_line(
+            buf, buf_size, &cursor, &required, i, name, &samples[i]);
         if (status != MHEALTH_OK) {
             return status;
         }

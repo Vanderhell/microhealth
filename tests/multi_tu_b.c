@@ -1,5 +1,7 @@
 #include "mhealth.h"
 
+mhealth_collect_result_t multi_collect(void *ctx, int32_t *out_value);
+
 mhealth_collect_result_t multi_collect(void *ctx, int32_t *out_value)
 {
     (void)ctx;

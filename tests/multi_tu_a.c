@@ -1,5 +1,7 @@
 #include "mhealth.h"
 
+uint32_t multi_clock(void *ctx);
+
 uint32_t multi_clock(void *ctx)
 {
     (void)ctx;
