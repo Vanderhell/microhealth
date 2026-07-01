@@ -7,12 +7,14 @@ typedef struct {
     int32_t heap_free;
 } app_state_t;
 
+/* cppcheck-suppress constParameterCallback */
 static uint32_t app_clock(void *ctx)
 {
     const app_state_t *state = (const app_state_t *)ctx;
     return state->now_ms;
 }
 
+/* cppcheck-suppress constParameterCallback */
 static mhealth_collect_result_t collect_heap(void *ctx, int32_t *out_value)
 {
     const app_state_t *state = (const app_state_t *)ctx;
