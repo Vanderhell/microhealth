@@ -12,7 +12,6 @@
 - Zero third-party runtime dependencies.
 - Snapshot formatting uses the C library `snprintf`.
 - No heap allocation inside the library.
-- No tag-backed `1.0.0` release exists in this repository history. Current repairs are tracked as `Unreleased`.
 
 ## Core Contracts
 

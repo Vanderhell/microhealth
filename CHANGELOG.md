@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.0.0 - 2026-07-01
+
 ### Changed
 
 - Replaced macro-sized public layouts with caller-owned runtime storage configuration.
