@@ -7,15 +7,13 @@ typedef struct {
     int32_t heap_free;
 } app_state_t;
 
-/* cppcheck-suppress constParameterCallback */
-static uint32_t app_clock(void *ctx)
+static uint32_t app_clock(const void *ctx)
 {
     const app_state_t *state = (const app_state_t *)ctx;
     return state->now_ms;
 }
 
-/* cppcheck-suppress constParameterCallback */
-static mhealth_collect_result_t collect_heap(void *ctx, int32_t *out_value)
+static mhealth_collect_result_t collect_heap(const void *ctx, int32_t *out_value)
 {
     const app_state_t *state = (const app_state_t *)ctx;
     *out_value = state->heap_free;
@@ -50,7 +48,7 @@ int main(void)
     config.history_meta = history_meta;
     config.history_samples = history_samples;
     config.history_capacity = 2U;
-    config.clock_fn = app_clock;
+    config.clock_fn = (mhealth_clock_fn)app_clock;
     config.clock_ctx = &app;
     config.alert_fn = on_alert;
     config.alert_ctx = &app;
@@ -62,7 +60,7 @@ int main(void)
     memset(&metric, 0, sizeof(metric));
     metric.name = "heap_free";
     metric.metric_id = MHEALTH_METRIC_HEAP_FREE;
-    metric.collect_fn = collect_heap;
+    metric.collect_fn = (mhealth_collect_fn)collect_heap;
     metric.collect_ctx = &app;
     metric.direction = MHEALTH_BELOW;
     metric.warn_threshold = 4000;
