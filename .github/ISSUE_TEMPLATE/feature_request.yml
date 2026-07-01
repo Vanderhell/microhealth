@@ -1,0 +1,34 @@
+name: Feature request
+description: Propose an in-scope improvement for microhealth
+title: "[feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep requests aligned with project scope: small C library, caller-owned storage, no runtime dependencies, no heap allocation.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What limitation or pain point are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the API, behavior, or documentation change you want.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: Memory, ABI, portability, threading, ISR, or integration constraints.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+

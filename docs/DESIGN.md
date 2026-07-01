@@ -17,6 +17,8 @@ This ensures callback queries observe a complete snapshot.
 
 Collector failures are explicit states, not values. A failed collection preserves the last valid value internally but marks the current sample as `MHEALTH_SAMPLE_COLLECTION_FAILED`.
 
+Threshold comparisons are inclusive. Equal warn/critical thresholds are rejected and the library does not synthesize intermediate WARN transitions or apply hysteresis.
+
 ## Reentrancy Guard
 
 The busy guard blocks same-instance mutation during checks and callbacks. It is not a mutex and does not make the library thread-safe.
@@ -24,3 +26,5 @@ The busy guard blocks same-instance mutation during checks and callbacks. It is 
 ## Volatile History
 
 History is caller-provided RAM. It survives only until reinitialization, reset, or power loss.
+
+Latest state is stored independently of history, so `mhealth_get_latest` remains usable when history capacity is zero.

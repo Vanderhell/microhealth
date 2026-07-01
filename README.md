@@ -18,21 +18,31 @@
 
 - Public structure layout does not change with consumer macros.
 - `mhealth_init` takes caller-owned metric storage and optional caller-owned history storage.
+- `metric_capacity == 0` is invalid.
+- `history_capacity == 0` disables history cleanly and still allows latest snapshot queries.
 - Metric names are borrowed. They must remain valid and immutable until reinitialization.
 - Collectors return `MHEALTH_COLLECT_OK`, `MHEALTH_COLLECT_UNAVAILABLE`, or `MHEALTH_COLLECT_ERROR`.
 - Collection failures are not numeric values and do not synthesize `WARN` or `CRITICAL`.
+- The last valid value is preserved internally after collection failure, but the current sample is marked failed.
 - ABOVE thresholds are inclusive: `warn <= value < critical`, `critical <= value`.
 - BELOW thresholds are inclusive: `warn >= value > critical`, `critical >= value`.
 - Equal warn/critical thresholds are rejected.
+- No hysteresis or debounce is implemented.
 - `mhealth_tick` samples the clock once per attempted tick.
+- `mhealth_check_now` bypasses the interval and becomes the next rate-limit reference.
 - Rate-limited skips report success with `performed == false` and do not collect, update history, or fire alerts.
+- Clock arithmetic assumes monotonic modulo-`2^32` time with intervals smaller than one full wrap.
 - Alert callbacks run only after the full latest snapshot, history entry, and counters are committed.
+- Alert delivery is synchronous and best-effort only.
+- Alert event pointers are valid only during the callback.
 - Same-instance mutating reentry from collectors and alert callbacks returns `MHEALTH_ERR_BUSY`.
 - Query APIs remain callable during callbacks.
+- Disabled metrics emit no fabricated recovery, are excluded from aggregate severity, and re-enable as unsampled.
 - Disabled, unsampled, valid, and collection-failed samples are distinct states.
 - History is volatile RAM only. It is lost on reinitialization, reset, or power loss.
 - One `mhealth_t` is not thread-safe. The caller must serialize same-instance access.
 - ISR use is unsupported unless the platform guarantees no concurrent access and ISR-safe callbacks/collectors.
+- There is no cleanup/defer mechanism, persistence layer, logger, transport, or reset subsystem in the library.
 
 ## Quick Start
 
@@ -45,15 +55,15 @@ typedef struct {
     int32_t heap_free;
 } app_state_t;
 
-static uint32_t app_clock(void *ctx)
+static uint32_t app_clock(const void *ctx)
 {
-    app_state_t *state = (app_state_t *)ctx;
+    const app_state_t *state = (const app_state_t *)ctx;
     return state->now_ms;
 }
 
-static mhealth_collect_result_t collect_heap(void *ctx, int32_t *out_value)
+static mhealth_collect_result_t collect_heap(const void *ctx, int32_t *out_value)
 {
-    app_state_t *state = (app_state_t *)ctx;
+    const app_state_t *state = (const app_state_t *)ctx;
     *out_value = state->heap_free;
     return MHEALTH_COLLECT_OK;
 }
@@ -83,7 +93,7 @@ int main(void)
     config.history_meta = history_meta;
     config.history_samples = history_samples;
     config.history_capacity = 2U;
-    config.clock_fn = app_clock;
+    config.clock_fn = (mhealth_clock_fn)app_clock;
     config.clock_ctx = &app;
     config.alert_fn = on_alert;
     config.alert_ctx = &app;
@@ -95,7 +105,7 @@ int main(void)
 
     metric.name = "heap_free";
     metric.metric_id = MHEALTH_METRIC_HEAP_FREE;
-    metric.collect_fn = collect_heap;
+    metric.collect_fn = (mhealth_collect_fn)collect_heap;
     metric.collect_ctx = &app;
     metric.direction = MHEALTH_BELOW;
     metric.warn_threshold = 4000;
@@ -104,7 +114,7 @@ int main(void)
         return 2;
     }
 
-    if (mhealth_tick(&hm, &result) != MHEALTH_OK) {
+    if (mhealth_check_now(&hm, &result) != MHEALTH_OK) {
         return 3;
     }
 
@@ -141,11 +151,23 @@ cmake -S tests/install_consumer -B build/install-consumer -DCMAKE_PREFIX_PATH=$P
 cmake --build build/install-consumer
 ```
 
+## Execution Limits
+
+- Same-instance concurrent access is undefined unless the caller serializes it.
+- The busy guard prevents same-instance recursive mutation. It is not a mutex or thread-safety guarantee.
+- Collectors and alert callbacks must return. Escaping through `longjmp` or a C++ exception is unsupported.
+- Calling process termination APIs, crashing, resetting, or losing power discards in-memory history and can interrupt later alert delivery.
+
 ## Documentation
 
 - [API Reference](docs/API_REFERENCE.md)
+- [Cookbook](docs/COOKBOOK.md)
 - [Design Notes](docs/DESIGN.md)
+- [FAQ](docs/FAQ.md)
 - [Porting Guide](docs/PORTING_GUIDE.md)
+- [Release Process](docs/RELEASE_PROCESS.md)
+- [Support](SUPPORT.md)
+- [Security Policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
 
 ## License

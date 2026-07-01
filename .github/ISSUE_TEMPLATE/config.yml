@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Support question
+    url: https://github.com/Vanderhell/microhealth/blob/master/SUPPORT.md
+    about: Use the support guide for usage and integration questions.
+  - name: Security policy
+    url: https://github.com/Vanderhell/microhealth/blob/master/SECURITY.md
+    about: Follow the security policy for vulnerability reports.
+

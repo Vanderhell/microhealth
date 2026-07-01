@@ -7,9 +7,12 @@ Header: `#include "mhealth.h"`
 `mhealth_init(mhealth_t *hm, const mhealth_config_t *config)`
 
 - `metric_slots` and `metric_capacity` are required.
+- Zero metric capacity is rejected.
 - `clock_fn` is required.
 - `history_capacity == 0` disables history and requires `history_meta == NULL` and `history_samples == NULL`.
 - `history_capacity > 0` requires caller-owned `history_meta` and flattened `history_samples`.
+- History storage is sized as `history_capacity * metric_capacity` flattened `mhealth_sample_t` entries.
+- Reinitialization outside active processing resets registration, latest state, counters, and volatile history.
 - Reinitialization during an active check or callback returns `MHEALTH_ERR_BUSY`.
 
 ## Registration
@@ -32,6 +35,7 @@ typedef mhealth_collect_result_t (*mhealth_collect_fn)(void *ctx, int32_t *out_v
 - `MHEALTH_COLLECT_OK` writes a metric value.
 - `MHEALTH_COLLECT_UNAVAILABLE` and `MHEALTH_COLLECT_ERROR` are non-numeric sample states.
 - Enabled metrics with failed or unsampled current data make aggregate health unhealthy.
+- A failed sample preserves the previous valid numeric value internally but resets current sample validity.
 
 ## Checks
 
@@ -41,6 +45,9 @@ typedef mhealth_collect_result_t (*mhealth_collect_fn)(void *ctx, int32_t *out_v
 - `transition_count` counts severity transitions even if no alert callback is installed.
 - `collection_failure_count` counts failed collectors in that check.
 - `mhealth_check_now` bypasses the interval and becomes the next rate-limit reference.
+- A check samples the clock once, collects all enabled metrics, commits the snapshot, then dispatches alerts in registration order.
+- Equal thresholds are invalid. ABOVE requires `warn < critical`. BELOW requires `warn > critical`.
+- No hysteresis or debounce is applied.
 
 ## Alerts
 
@@ -50,6 +57,7 @@ typedef mhealth_collect_result_t (*mhealth_collect_fn)(void *ctx, int32_t *out_v
 - Alert pointers are valid only during the callback.
 - Same-instance mutating operations from callbacks return `MHEALTH_ERR_BUSY`.
 - Query APIs are allowed during callbacks and observe fully committed state.
+- Recovery to `OK`, `CRITICAL` to `WARN`, and direct `CRITICAL` to `OK` are valid transitions.
 
 ## Query APIs
 
@@ -63,6 +71,13 @@ typedef mhealth_collect_result_t (*mhealth_collect_fn)(void *ctx, int32_t *out_v
 
 These APIs never encode invalid use as healthy success. Uninitialized instances return `MHEALTH_ERR_STATE`.
 
+## Enable / Disable
+
+- `mhealth_enable` changes a metric between enabled and disabled states.
+- Disabling marks the current sample `MHEALTH_SAMPLE_DISABLED`, excludes the metric from aggregate severity, and emits no fabricated recovery.
+- Re-enabling marks the current sample `MHEALTH_SAMPLE_UNSAMPLED`.
+- The next successful non-OK sample after re-enable produces a fresh transition event.
+
 ## Sample States
 
 - `MHEALTH_SAMPLE_UNSAMPLED`
@@ -71,3 +86,12 @@ These APIs never encode invalid use as healthy success. Uninitialized instances 
 - `MHEALTH_SAMPLE_COLLECTION_FAILED`
 
 History and latest snapshots preserve these states directly.
+
+## Formatting
+
+`mhealth_snapshot_format(...)`
+
+- Accepts caller-provided snapshot metadata and samples.
+- Returns `MHEALTH_ERR_TRUNCATED` when the buffer is too small.
+- Guarantees NUL termination when `buf != NULL && buf_size > 0`.
+- Supports required-length queries with `buf == NULL && buf_size == 0`.

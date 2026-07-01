@@ -7,6 +7,7 @@
 - Optionally provide caller-owned history storage.
 - Provide a monotonic modulo-`2^32` clock callback.
 - Provide synchronous collectors that always return.
+- If your application uses const-correct local callbacks such as `const void *ctx`, cast once when assigning to the public callback types.
 
 ## Unsupported Assumptions
 
@@ -14,6 +15,8 @@
 - No guaranteed ISR safety.
 - No cleanup/defer hooks.
 - No persistence, logging, queueing, or transport built into the library.
+- No guarantee for arbitrary backward clock jumps beyond normal unsigned wrap handling.
+- No persistent incident evidence after reset, watchdog, brownout, or power loss.
 
 ## CMake
 
